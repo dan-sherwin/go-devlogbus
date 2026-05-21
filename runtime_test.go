@@ -8,12 +8,12 @@ import (
 )
 
 func TestRuntimeWithHandlerReusesBoundHandler(t *testing.T) {
-	settings := NewSettings()
-	if err := settings.Configure(Config{Enabled: false, Endpoint: "127.0.0.1:7422"}); err != nil {
+	resetRuntimeForTest(t)
+	if err := RuntimeSettings().Configure(Config{Enabled: false, Endpoint: "127.0.0.1:7422"}); err != nil {
 		t.Fatalf("configure settings: %v", err)
 	}
-	runtime := NewRuntime(RuntimeOptions{Source: "runtime-test", Settings: settings})
-	handler := runtime.Handler(slog.LevelDebug)
+	Setup(SetupOptions{Source: "runtime-test"})
+	handler := RuntimeHandler(slog.LevelDebug)
 	if handler == nil {
 		t.Fatal("expected handler")
 	}
@@ -25,19 +25,20 @@ func TestRuntimeWithHandlerReusesBoundHandler(t *testing.T) {
 		t.Fatalf("unexpected endpoint status: %#v", status)
 	}
 
-	handlers := runtime.WithHandler([]slog.Handler{}, slog.LevelInfo)
+	handlers := WithHandler([]slog.Handler{}, slog.LevelInfo)
 	if len(handlers) != 1 {
 		t.Fatalf("handlers len = %d, want 1", len(handlers))
 	}
-	if got := runtime.Handler(slog.LevelWarn); got != handler {
+	if got := RuntimeHandler(slog.LevelWarn); got != handler {
 		t.Fatal("expected runtime to reuse handler")
 	}
 }
 
 func TestRuntimeCommandUsesConfiguredRPCCaller(t *testing.T) {
+	resetRuntimeForTest(t)
 	var output bytes.Buffer
 	var calledMethod string
-	runtime := NewRuntime(RuntimeOptions{
+	Setup(SetupOptions{
 		Source: "runtime-test",
 		Output: &output,
 		CallRPC: func(serviceMethod string, args any, reply any) error {
@@ -54,8 +55,6 @@ func TestRuntimeCommandUsesConfiguredRPCCaller(t *testing.T) {
 			return nil
 		},
 	})
-	defer SetDefaultRuntime(nil)
-	SetDefaultRuntime(runtime)
 
 	if err := (&StatusCommand{}).Run(); err != nil {
 		t.Fatalf("status command: %v", err)
@@ -66,4 +65,13 @@ func TestRuntimeCommandUsesConfiguredRPCCaller(t *testing.T) {
 	if !strings.Contains(output.String(), "Endpoint:        127.0.0.1:7422") {
 		t.Fatalf("unexpected output: %s", output.String())
 	}
+}
+
+func resetRuntimeForTest(t *testing.T) {
+	t.Helper()
+	previous := defaultRuntime
+	defaultRuntime = newRuntimeState()
+	t.Cleanup(func() {
+		defaultRuntime = previous
+	})
 }

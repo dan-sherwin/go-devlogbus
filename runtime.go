@@ -13,19 +13,18 @@ import (
 type RegisterRPCFunc func(name string, receiver any)
 type CallRPCFunc func(serviceMethod string, args any, reply any) error
 
-type RuntimeOptions struct {
+type SetupOptions struct {
 	Source                string
 	RPCName               string
 	RegisterRPC           RegisterRPCFunc
 	CallRPC               CallRPCFunc
-	Settings              *Settings
 	Output                io.Writer
 	QueueSize             int
 	PublishTimeout        time.Duration
 	DisableRPCPersistence bool
 }
 
-type Runtime struct {
+type runtimeState struct {
 	mu             sync.Mutex
 	source         string
 	rpcName        string
@@ -37,15 +36,85 @@ type Runtime struct {
 	queueSize      int
 	publishTimeout time.Duration
 	persistRPC     bool
-	registered     bool
+	setup          bool
 }
 
-var (
-	defaultRuntimeMu sync.RWMutex
-	defaultRuntime   *Runtime
-)
+var defaultRuntime = newRuntimeState()
 
-func NewRuntime(options RuntimeOptions) *Runtime {
+func Setup(options SetupOptions) {
+	defaultRuntime.setupRuntime(options)
+}
+
+func WithHandler(handlers []slog.Handler, level slog.Leveler) []slog.Handler {
+	return append(handlers, RuntimeHandler(level))
+}
+
+func RuntimeHandler(level slog.Leveler) *Handler {
+	return defaultRuntime.handlerForLevel(level)
+}
+
+func RuntimeSettings() *Settings {
+	return defaultRuntime.currentSettings()
+}
+
+func RPCName() string {
+	return defaultRuntime.currentRPCName()
+}
+
+func CurrentStatus() (Status, error) {
+	var status Status
+	if err := defaultRuntime.call("Status", EmptyArgs{}, &status); err != nil {
+		return Status{}, err
+	}
+	return status, nil
+}
+
+func Enable(endpoint string) (Status, error) {
+	if strings.TrimSpace(endpoint) != "" {
+		return Configure(Config{Enabled: true, Endpoint: endpoint})
+	}
+	var status Status
+	if err := defaultRuntime.call("Enable", EmptyArgs{}, &status); err != nil {
+		return Status{}, err
+	}
+	return status, nil
+}
+
+func Disable() (Status, error) {
+	var status Status
+	if err := defaultRuntime.call("Disable", EmptyArgs{}, &status); err != nil {
+		return Status{}, err
+	}
+	return status, nil
+}
+
+func SetEndpoint(endpoint string) (Status, error) {
+	var status Status
+	if err := defaultRuntime.call("SetEndpoint", EndpointArgs{Endpoint: endpoint}, &status); err != nil {
+		return Status{}, err
+	}
+	return status, nil
+}
+
+func Configure(config Config) (Status, error) {
+	var status Status
+	if err := defaultRuntime.call("Configure", ConfigureArgs{Enabled: config.Enabled, Endpoint: config.Endpoint}, &status); err != nil {
+		return Status{}, err
+	}
+	return status, nil
+}
+
+func newRuntimeState() *runtimeState {
+	return &runtimeState{
+		source:     "unknown",
+		rpcName:    DefaultRPCName,
+		settings:   NewSettings(),
+		output:     os.Stdout,
+		persistRPC: true,
+	}
+}
+
+func (s *runtimeState) setupRuntime(options SetupOptions) {
 	source := strings.TrimSpace(options.Source)
 	if source == "" {
 		source = "unknown"
@@ -54,56 +123,30 @@ func NewRuntime(options RuntimeOptions) *Runtime {
 	if rpcName == "" {
 		rpcName = DefaultRPCName
 	}
-	settings := options.Settings
-	if settings == nil {
-		settings = NewSettings()
-	}
 	output := options.Output
 	if output == nil {
 		output = os.Stdout
 	}
-	runtime := &Runtime{
-		source:         source,
-		rpcName:        rpcName,
-		registerRPC:    options.RegisterRPC,
-		callRPC:        options.CallRPC,
-		settings:       settings,
-		output:         output,
-		queueSize:      options.QueueSize,
-		publishTimeout: options.PublishTimeout,
-		persistRPC:     !options.DisableRPCPersistence,
-	}
-	SetDefaultRuntime(runtime)
-	return runtime
-}
 
-func SetDefaultRuntime(runtime *Runtime) {
-	defaultRuntimeMu.Lock()
-	defer defaultRuntimeMu.Unlock()
-	defaultRuntime = runtime
-}
+	s.mu.Lock()
+	s.source = source
+	s.rpcName = rpcName
+	s.registerRPC = options.RegisterRPC
+	s.callRPC = options.CallRPC
+	s.output = output
+	s.queueSize = options.QueueSize
+	s.publishTimeout = options.PublishTimeout
+	s.persistRPC = !options.DisableRPCPersistence
+	setup := s.setup
+	settings := s.settings
+	registerRPC := s.registerRPC
+	persistRPC := s.persistRPC
+	s.setup = true
+	s.mu.Unlock()
 
-func DefaultRuntime() *Runtime {
-	defaultRuntimeMu.RLock()
-	defer defaultRuntimeMu.RUnlock()
-	return defaultRuntime
-}
-
-func (r *Runtime) Register() {
-	if r == nil {
+	if setup {
 		return
 	}
-	r.mu.Lock()
-	if r.registered {
-		r.mu.Unlock()
-		return
-	}
-	r.registered = true
-	settings := r.settings
-	rpcName := r.rpcName
-	registerRPC := r.registerRPC
-	persistRPC := r.persistRPC
-	r.mu.Unlock()
 
 	settings.Register()
 	if registerRPC != nil {
@@ -111,103 +154,60 @@ func (r *Runtime) Register() {
 		receiver.Persist = persistRPC
 		registerRPC(rpcName, receiver)
 	}
-	SetDefaultRuntime(r)
 }
 
-func (r *Runtime) WithHandler(handlers []slog.Handler, level slog.Leveler) []slog.Handler {
-	return append(handlers, r.Handler(level))
-}
-
-func (r *Runtime) Handler(level slog.Leveler) *Handler {
-	if r == nil {
-		return New(Options{Level: level})
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.handler == nil {
-		r.handler = r.settings.NewHandler(Options{
-			Source:         r.source,
+func (s *runtimeState) handlerForLevel(level slog.Leveler) *Handler {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.handler == nil {
+		s.handler = s.settings.NewHandler(Options{
+			Source:         s.source,
 			Level:          level,
-			QueueSize:      r.queueSize,
-			PublishTimeout: r.publishTimeout,
+			QueueSize:      s.queueSize,
+			PublishTimeout: s.publishTimeout,
 		})
-		return r.handler
+		return s.handler
 	}
-	r.handler.SetLevel(level)
-	_ = r.settings.Bind(r.handler)
-	return r.handler
+	s.handler.SetLevel(level)
+	_ = s.settings.Bind(s.handler)
+	return s.handler
 }
 
-func (r *Runtime) Settings() *Settings {
-	if r == nil {
-		return nil
-	}
-	return r.settings
+func (s *runtimeState) currentSettings() *Settings {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.settings
 }
 
-func (r *Runtime) RPCName() string {
-	if r == nil || strings.TrimSpace(r.rpcName) == "" {
+func (s *runtimeState) currentRPCName() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if strings.TrimSpace(s.rpcName) == "" {
 		return DefaultRPCName
 	}
-	return r.rpcName
+	return s.rpcName
 }
 
-func (r *Runtime) Status() (Status, error) {
-	var status Status
-	if err := r.call("Status", EmptyArgs{}, &status); err != nil {
-		return Status{}, err
+func (s *runtimeState) call(method string, args any, reply any) error {
+	s.mu.Lock()
+	callRPC := s.callRPC
+	rpcName := s.rpcName
+	s.mu.Unlock()
+
+	if callRPC == nil {
+		return errors.New("devlogbus RPC caller is not configured")
 	}
-	return status, nil
+	if strings.TrimSpace(rpcName) == "" {
+		rpcName = DefaultRPCName
+	}
+	return callRPC(rpcName+"."+method, args, reply)
 }
 
-func (r *Runtime) Enable(endpoint string) (Status, error) {
-	if strings.TrimSpace(endpoint) != "" {
-		return r.Configure(Config{Enabled: true, Endpoint: endpoint})
-	}
-	var status Status
-	if err := r.call("Enable", EmptyArgs{}, &status); err != nil {
-		return Status{}, err
-	}
-	return status, nil
-}
-
-func (r *Runtime) Disable() (Status, error) {
-	var status Status
-	if err := r.call("Disable", EmptyArgs{}, &status); err != nil {
-		return Status{}, err
-	}
-	return status, nil
-}
-
-func (r *Runtime) SetEndpoint(endpoint string) (Status, error) {
-	var status Status
-	if err := r.call("SetEndpoint", EndpointArgs{Endpoint: endpoint}, &status); err != nil {
-		return Status{}, err
-	}
-	return status, nil
-}
-
-func (r *Runtime) Configure(config Config) (Status, error) {
-	var status Status
-	if err := r.call("Configure", ConfigureArgs{Enabled: config.Enabled, Endpoint: config.Endpoint}, &status); err != nil {
-		return Status{}, err
-	}
-	return status, nil
-}
-
-func (r *Runtime) call(method string, args any, reply any) error {
-	if r == nil {
-		return errors.New("devlogbus runtime is nil")
-	}
-	if r.callRPC == nil {
-		return errors.New("devlogbus runtime RPC caller is not configured")
-	}
-	return r.callRPC(r.RPCName()+"."+method, args, reply)
-}
-
-func (r *Runtime) writer() io.Writer {
-	if r == nil || r.output == nil {
+func runtimeWriter() io.Writer {
+	defaultRuntime.mu.Lock()
+	defer defaultRuntime.mu.Unlock()
+	if defaultRuntime.output == nil {
 		return os.Stdout
 	}
-	return r.output
+	return defaultRuntime.output
 }

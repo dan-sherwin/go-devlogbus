@@ -26,54 +26,38 @@ type (
 )
 
 func (c *StatusCommand) Run() error {
-	runtime, err := commandRuntime()
+	status, err := CurrentStatus()
 	if err != nil {
 		return err
 	}
-	status, err := runtime.Status()
-	if err != nil {
-		return err
-	}
-	FprintStatus(runtime.writer(), status)
+	FprintStatus(runtimeWriter(), status)
 	return nil
 }
 
 func (c *EnableCommand) Run() error {
-	runtime, err := commandRuntime()
+	status, err := Enable(c.Endpoint)
 	if err != nil {
 		return err
 	}
-	status, err := runtime.Enable(c.Endpoint)
-	if err != nil {
-		return err
-	}
-	FprintStatus(runtime.writer(), status)
+	FprintStatus(runtimeWriter(), status)
 	return nil
 }
 
 func (c *DisableCommand) Run() error {
-	runtime, err := commandRuntime()
+	status, err := Disable()
 	if err != nil {
 		return err
 	}
-	status, err := runtime.Disable()
-	if err != nil {
-		return err
-	}
-	FprintStatus(runtime.writer(), status)
+	FprintStatus(runtimeWriter(), status)
 	return nil
 }
 
 func (c *SetEndpointCommand) Run() error {
-	runtime, err := commandRuntime()
+	status, err := SetEndpoint(c.Endpoint)
 	if err != nil {
 		return err
 	}
-	status, err := runtime.SetEndpoint(c.Endpoint)
-	if err != nil {
-		return err
-	}
-	FprintStatus(runtime.writer(), status)
+	FprintStatus(runtimeWriter(), status)
 	return nil
 }
 
@@ -93,12 +77,4 @@ func FprintStatus(writer io.Writer, status Status) {
 	if status.LastError != "" {
 		fmt.Fprintf(writer, "Last Error:      %s\n", status.LastError)
 	}
-}
-
-func commandRuntime() (*Runtime, error) {
-	runtime := DefaultRuntime()
-	if runtime == nil {
-		return nil, fmt.Errorf("devlogbus runtime is not configured")
-	}
-	return runtime, nil
 }

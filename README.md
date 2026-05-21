@@ -16,22 +16,53 @@ Spacelink templated-service runtime behavior:
 
 ## Settings
 
-Most templated services should use `Runtime`. It owns the settings, RPC
-receiver, handler lifecycle, and CLI command implementation:
+Most templated services should call `Setup` once from the service `init()` path.
+The package owns a single process-wide runtime for settings, RPC, handler
+lifecycle, and CLI command implementation:
 
 ```go
-var devLogBus = godevlogbus.NewRuntime(godevlogbus.RuntimeOptions{
-	Source:      consts.APPNAME,
-	RegisterRPC: rpc.RegisterName,
-	CallRPC:     rpc.Call,
-})
-
 func init() {
-	devLogBus.Register()
+	godevlogbus.Setup(godevlogbus.SetupOptions{
+		Source:      consts.APPNAME,
+		RegisterRPC: rpc.RegisterName,
+		CallRPC:     rpc.Call,
+	})
+}
+```
+
+The logger can attach the handler directly from the package:
+
+```go
+handlers = godevlogbus.WithHandler(handlers, level)
+```
+
+That is the entire service-specific setup:
+
+```go
+func init() {
+	godevlogbus.Setup(godevlogbus.SetupOptions{
+		Source:      consts.APPNAME,
+		RegisterRPC: rpc.RegisterName,
+		CallRPC:     rpc.Call,
+	})
+}
+
+handlers = godevlogbus.WithHandler(handlers, level)
+```
+
+For services that still want a local helper while migrating:
+
+```go
+func init() {
+	godevlogbus.Setup(godevlogbus.SetupOptions{
+		Source:      consts.APPNAME,
+		RegisterRPC: rpc.RegisterName,
+		CallRPC:     rpc.Call,
+	})
 }
 
 func withDevLogBusHandler(handlers []slog.Handler, level slog.Level) []slog.Handler {
-	return devLogBus.WithHandler(handlers, level)
+	return godevlogbus.WithHandler(handlers, level)
 }
 ```
 
@@ -55,7 +86,7 @@ Endpoint examples:
 Attach the runtime handler regardless of the enabled setting:
 
 ```go
-handlers = devLogBus.WithHandler(handlers, level)
+handlers = godevlogbus.WithHandler(handlers, level)
 ```
 
 The handler drops records when disabled, and it drops records instead of
@@ -88,6 +119,6 @@ The CLI command exposes:
 - `devlogbus setEndpoint`
 
 By default the receiver persists changes through `app_settings.SetSetting`, so a
-runtime troubleshooting change survives a service restart. Set `Persist=false`
-on `RPCReceiver`, or `DisableRPCPersistence=true` on `RuntimeOptions`, when a
-command should be process-local only.
+runtime troubleshooting change survives a service restart. Set
+`DisableRPCPersistence=true` on `SetupOptions` when a command should be
+process-local only.
