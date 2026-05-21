@@ -12,12 +12,11 @@ import (
 )
 
 const (
-	NetworkUnix             = "unix"
-	NetworkTCP              = "tcp"
-	SettingEnabled          = "devlogbus_enabled"
-	SettingEndpoint         = "devlogbus_endpoint"
-	LegacySettingSocketPath = "devlogbus_socket_path"
-	DefaultRPCName          = "DevLogBus"
+	NetworkUnix     = "unix"
+	NetworkTCP      = "tcp"
+	SettingEnabled  = "devlogbus_enabled"
+	SettingEndpoint = "devlogbus_endpoint"
+	DefaultRPCName  = "DevLogBus"
 )
 
 type Endpoint struct {

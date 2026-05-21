@@ -9,32 +9,21 @@ import (
 )
 
 type Settings struct {
-	mu               sync.RWMutex
-	Enabled          bool
-	Endpoint         string
-	LegacySocketPath string
-	handler          *Handler
-	registered       bool
-}
-
-type SettingsRegistrationOptions struct {
-	RegisterLegacySocketPath bool
+	mu         sync.RWMutex
+	Enabled    bool
+	Endpoint   string
+	handler    *Handler
+	registered bool
 }
 
 func NewSettings() *Settings {
-	defaultEndpoint := DefaultEndpoint()
 	return &Settings{
-		Enabled:          DefaultEnabled(),
-		Endpoint:         defaultEndpoint,
-		LegacySocketPath: defaultEndpoint,
+		Enabled:  DefaultEnabled(),
+		Endpoint: DefaultEndpoint(),
 	}
 }
 
 func (s *Settings) Register() {
-	s.RegisterWithOptions(SettingsRegistrationOptions{RegisterLegacySocketPath: true})
-}
-
-func (s *Settings) RegisterWithOptions(options SettingsRegistrationOptions) {
 	s.mu.Lock()
 	if s.registered {
 		s.mu.Unlock()
@@ -65,21 +54,6 @@ func (s *Settings) RegisterWithOptions(options SettingsRegistrationOptions) {
 		},
 		SetFunc: func(value string) error {
 			return s.SetEndpoint(value)
-		},
-	})
-	if !options.RegisterLegacySocketPath {
-		return
-	}
-	app_settings.RegisterSetting(&app_settings.Setting{
-		Name:        LegacySettingSocketPath,
-		Description: "Deprecated DevLogBus Unix socket path setting; use devlogbus_endpoint",
-		GetFunc: func() string {
-			s.mu.RLock()
-			defer s.mu.RUnlock()
-			return s.LegacySocketPath
-		},
-		SetFunc: func(value string) error {
-			return s.SetLegacySocketPath(value)
 		},
 	})
 }
@@ -141,7 +115,6 @@ func (s *Settings) Configure(config Config) error {
 	s.mu.Lock()
 	s.Enabled = config.Enabled
 	s.Endpoint = strings.TrimSpace(config.Endpoint)
-	s.LegacySocketPath = s.Endpoint
 	handler := s.handler
 	s.mu.Unlock()
 
@@ -163,18 +136,8 @@ func (s *Settings) SetEndpoint(endpoint string) error {
 	return s.Configure(config)
 }
 
-func (s *Settings) SetLegacySocketPath(socketPath string) error {
-	s.mu.Lock()
-	s.LegacySocketPath = strings.TrimSpace(socketPath)
-	s.mu.Unlock()
-	return s.SetEndpoint(socketPath)
-}
-
 func (s *Settings) configLocked() Config {
 	endpoint := strings.TrimSpace(s.Endpoint)
-	if endpoint == "" {
-		endpoint = strings.TrimSpace(s.LegacySocketPath)
-	}
 	if endpoint == "" {
 		endpoint = DefaultEndpoint()
 	}

@@ -71,9 +71,6 @@ The canonical settings are:
 - `devlogbus_enabled`
 - `devlogbus_endpoint`
 
-`devlogbus_socket_path` is registered as a compatibility bridge by default. New
-services should use `devlogbus_endpoint`.
-
 Endpoint examples:
 
 - `/tmp/devlogbus/devlogbus.sock`
