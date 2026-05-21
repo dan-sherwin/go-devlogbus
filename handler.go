@@ -10,7 +10,7 @@ import (
 	"github.com/dan-sherwin/devlogbus/pkg/protocol"
 )
 
-type Options struct {
+type handlerOptions struct {
 	Source         string
 	Level          slog.Leveler
 	Enabled        bool
@@ -19,7 +19,7 @@ type Options struct {
 	PublishTimeout time.Duration
 }
 
-type Handler struct {
+type handler struct {
 	state  *handlerState
 	attrs  map[string]any
 	groups []string
@@ -30,7 +30,7 @@ type handlerState struct {
 	source         string
 	level          slog.Leveler
 	enabled        bool
-	endpoint       Endpoint
+	endpoint       endpoint
 	queueSize      int
 	publishTimeout time.Duration
 	sink           *sink
@@ -38,7 +38,7 @@ type handlerState struct {
 	lastError      string
 }
 
-func New(options Options) *Handler {
+func newHandler(options handlerOptions) *handler {
 	if strings.TrimSpace(options.Source) == "" {
 		options.Source = "unknown"
 	}
@@ -58,15 +58,15 @@ func New(options Options) *Handler {
 		queueSize:      options.QueueSize,
 		publishTimeout: options.PublishTimeout,
 	}
-	handler := &Handler{state: state, attrs: map[string]any{}}
-	if err := handler.Configure(Config{Enabled: options.Enabled, Endpoint: options.Endpoint}); err != nil {
+	handler := &handler{state: state, attrs: map[string]any{}}
+	if err := handler.configure(config{Enabled: options.Enabled, Endpoint: options.Endpoint}); err != nil {
 		state.setError(err)
 	}
 	return handler
 }
 
-func (h *Handler) Configure(config Config) error {
-	endpoint, err := ParseEndpoint(config.Endpoint)
+func (h *handler) configure(config config) error {
+	endpoint, err := parseEndpoint(config.Endpoint)
 	if err != nil {
 		h.state.setError(err)
 		return err
@@ -75,7 +75,7 @@ func (h *Handler) Configure(config Config) error {
 	return nil
 }
 
-func (h *Handler) SetLevel(level slog.Leveler) {
+func (h *handler) setLevel(level slog.Leveler) {
 	if level == nil {
 		level = slog.LevelDebug
 	}
@@ -84,20 +84,20 @@ func (h *Handler) SetLevel(level slog.Leveler) {
 	h.state.level = level
 }
 
-func (h *Handler) Close() {
+func (h *handler) Close() {
 	h.state.configure(false, h.state.currentEndpoint())
 }
 
-func (h *Handler) Status() Status {
+func (h *handler) status() Status {
 	return h.state.status()
 }
 
-func (h *Handler) Enabled(_ context.Context, level slog.Level) bool {
+func (h *handler) Enabled(_ context.Context, level slog.Level) bool {
 	enabled, currentLevel, currentSink := h.state.enabledSnapshot()
 	return enabled && currentSink != nil && level >= currentLevel.Level()
 }
 
-func (h *Handler) Handle(_ context.Context, record slog.Record) error {
+func (h *handler) Handle(_ context.Context, record slog.Record) error {
 	snapshot := h.state.handleSnapshot(record.Level)
 	if !snapshot.enabled || snapshot.sink == nil {
 		return nil
@@ -121,7 +121,7 @@ func (h *Handler) Handle(_ context.Context, record slog.Record) error {
 	return nil
 }
 
-func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
+func (h *handler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	clone := *h
 	clone.attrs = copyAttrs(h.attrs)
 	for _, attr := range attrs {
@@ -130,7 +130,7 @@ func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &clone
 }
 
-func (h *Handler) WithGroup(name string) slog.Handler {
+func (h *handler) WithGroup(name string) slog.Handler {
 	if name == "" {
 		return h
 	}
@@ -145,7 +145,7 @@ type handleSnapshot struct {
 	sink    *sink
 }
 
-func (s *handlerState) configure(enabled bool, endpoint Endpoint) {
+func (s *handlerState) configure(enabled bool, endpoint endpoint) {
 	s.mu.Lock()
 
 	oldSink := s.sink
@@ -175,11 +175,11 @@ func (s *handlerState) configure(enabled bool, endpoint Endpoint) {
 	}
 }
 
-func (s *handlerState) currentEndpoint() Endpoint {
+func (s *handlerState) currentEndpoint() endpoint {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if s.endpoint.Raw == "" {
-		endpoint, _ := ParseEndpoint("")
+	if s.endpoint.Network == "" || s.endpoint.Address == "" {
+		endpoint, _ := parseEndpoint("")
 		return endpoint
 	}
 	return s.endpoint
@@ -204,16 +204,11 @@ func (s *handlerState) status() Status {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return Status{
-		Enabled:        s.enabled,
-		Endpoint:       s.endpoint.Raw,
-		Network:        s.endpoint.Network,
-		Address:        s.endpoint.Address,
-		SocketPath:     s.endpoint.SocketPath,
-		Source:         s.source,
-		QueueSize:      s.queueSize,
-		PublishTimeout: s.publishTimeout.String(),
-		Generation:     s.generation,
-		LastError:      s.lastError,
+		Enabled:    s.enabled,
+		Endpoint:   s.endpoint.String(),
+		Source:     s.source,
+		Generation: s.generation,
+		LastError:  s.lastError,
 	}
 }
 

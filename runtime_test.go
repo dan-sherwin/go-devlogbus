@@ -9,19 +9,19 @@ import (
 
 func TestRuntimeWithHandlerReusesBoundHandler(t *testing.T) {
 	resetRuntimeForTest(t)
-	if err := RuntimeSettings().Configure(Config{Enabled: false, Endpoint: "127.0.0.1:7422"}); err != nil {
+	if err := defaultRuntime.settings.configure(config{Enabled: false, Endpoint: "127.0.0.1:7422"}); err != nil {
 		t.Fatalf("configure settings: %v", err)
 	}
 	Setup(SetupOptions{Source: "runtime-test"})
-	handler := RuntimeHandler(slog.LevelDebug)
+	handler := defaultRuntime.handlerForLevel(slog.LevelDebug)
 	if handler == nil {
 		t.Fatal("expected handler")
 	}
-	status := handler.Status()
+	status := handler.status()
 	if status.Source != "runtime-test" {
 		t.Fatalf("source = %q, want runtime-test", status.Source)
 	}
-	if status.Network != NetworkTCP || status.Address != "127.0.0.1:7422" {
+	if status.Endpoint != "tcp://127.0.0.1:7422" {
 		t.Fatalf("unexpected endpoint status: %#v", status)
 	}
 
@@ -29,7 +29,7 @@ func TestRuntimeWithHandlerReusesBoundHandler(t *testing.T) {
 	if len(handlers) != 1 {
 		t.Fatalf("handlers len = %d, want 1", len(handlers))
 	}
-	if got := RuntimeHandler(slog.LevelWarn); got != handler {
+	if got := defaultRuntime.handlerForLevel(slog.LevelWarn); got != handler {
 		t.Fatal("expected runtime to reuse handler")
 	}
 }
@@ -46,9 +46,7 @@ func TestRuntimeCommandUsesConfiguredRPCCaller(t *testing.T) {
 			status := reply.(*Status)
 			*status = Status{
 				Enabled:    true,
-				Endpoint:   "127.0.0.1:7422",
-				Network:    NetworkTCP,
-				Address:    "127.0.0.1:7422",
+				Endpoint:   "tcp://127.0.0.1:7422",
 				Source:     "runtime-test",
 				Generation: 2,
 			}
@@ -56,14 +54,17 @@ func TestRuntimeCommandUsesConfiguredRPCCaller(t *testing.T) {
 		},
 	})
 
-	if err := (&StatusCommand{}).Run(); err != nil {
+	if err := (&statusCommand{}).Run(); err != nil {
 		t.Fatalf("status command: %v", err)
 	}
-	if calledMethod != DefaultRPCName+".Status" {
+	if calledMethod != defaultRPCName+".Status" {
 		t.Fatalf("called method = %q", calledMethod)
 	}
-	if !strings.Contains(output.String(), "Endpoint:        127.0.0.1:7422") {
+	if !strings.Contains(output.String(), "Endpoint:   tcp://127.0.0.1:7422") {
 		t.Fatalf("unexpected output: %s", output.String())
+	}
+	if strings.Contains(output.String(), "Network:") || strings.Contains(output.String(), "Address:") || strings.Contains(output.String(), "Socket Path:") {
+		t.Fatalf("status output leaked transport internals: %s", output.String())
 	}
 }
 

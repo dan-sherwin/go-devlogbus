@@ -12,88 +12,83 @@ import (
 )
 
 const (
-	NetworkUnix     = "unix"
-	NetworkTCP      = "tcp"
-	SettingEnabled  = "devlogbus_enabled"
-	SettingEndpoint = "devlogbus_endpoint"
-	DefaultRPCName  = "DevLogBus"
+	networkUnix     = "unix"
+	networkTCP      = "tcp"
+	settingEnabled  = "devlogbus_enabled"
+	settingEndpoint = "devlogbus_endpoint"
+	defaultRPCName  = "DevLogBus"
 )
 
-type Endpoint struct {
-	Raw        string
-	Network    string
-	Address    string
-	SocketPath string
+type endpoint struct {
+	Network string
+	Address string
 }
 
-func DefaultEnabled() bool {
+func defaultEnabled() bool {
 	return runtime.GOOS == "darwin"
 }
 
-func DefaultEndpoint() string {
+func defaultEndpoint() string {
 	return devlogbusclient.DefaultSocketPath()
 }
 
-func ParseEndpoint(raw string) (Endpoint, error) {
+func parseEndpoint(raw string) (endpoint, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		raw = DefaultEndpoint()
+		raw = defaultEndpoint()
 	}
 
 	lower := strings.ToLower(raw)
 	switch {
 	case strings.HasPrefix(lower, "unix://"):
-		address := strings.TrimPrefix(raw, raw[:len("unix://")])
+		address := raw[len("unix://"):]
 		if address == "" {
-			return Endpoint{}, fmt.Errorf("unix devlogbus endpoint requires a socket path")
+			return endpoint{}, fmt.Errorf("unix devlogbus endpoint requires a socket path")
 		}
-		return unixEndpoint(raw, address), nil
+		return unixEndpoint(address), nil
 	case strings.HasPrefix(lower, "unix:"):
-		address := strings.TrimPrefix(raw, raw[:len("unix:")])
+		address := raw[len("unix:"):]
 		if address == "" {
-			return Endpoint{}, fmt.Errorf("unix devlogbus endpoint requires a socket path")
+			return endpoint{}, fmt.Errorf("unix devlogbus endpoint requires a socket path")
 		}
-		return unixEndpoint(raw, address), nil
+		return unixEndpoint(address), nil
 	case strings.HasPrefix(lower, "tcp://"):
 		parsed, err := url.Parse(raw)
 		if err != nil {
-			return Endpoint{}, fmt.Errorf("parse tcp devlogbus endpoint: %w", err)
+			return endpoint{}, fmt.Errorf("parse tcp devlogbus endpoint: %w", err)
 		}
 		if parsed.Host == "" {
-			return Endpoint{}, fmt.Errorf("tcp devlogbus endpoint requires host:port")
+			return endpoint{}, fmt.Errorf("tcp devlogbus endpoint requires host:port")
 		}
-		return tcpEndpoint(raw, parsed.Host)
+		return tcpEndpoint(parsed.Host)
 	case strings.HasPrefix(lower, "tcp:"):
-		address := strings.TrimPrefix(raw, raw[:len("tcp:")])
+		address := raw[len("tcp:"):]
 		if address == "" {
-			return Endpoint{}, fmt.Errorf("tcp devlogbus endpoint requires host:port")
+			return endpoint{}, fmt.Errorf("tcp devlogbus endpoint requires host:port")
 		}
-		return tcpEndpoint(raw, address)
+		return tcpEndpoint(address)
 	}
 
 	if looksLikeTCPAddress(raw) {
-		return tcpEndpoint(raw, raw)
+		return tcpEndpoint(raw)
 	}
-	return unixEndpoint(raw, raw), nil
+	return unixEndpoint(raw), nil
 }
 
-func unixEndpoint(raw, address string) Endpoint {
+func unixEndpoint(address string) endpoint {
 	address = filepath.Clean(address)
-	return Endpoint{
-		Raw:        raw,
-		Network:    NetworkUnix,
-		Address:    address,
-		SocketPath: address,
+	return endpoint{
+		Network: networkUnix,
+		Address: address,
 	}
 }
 
-func tcpEndpoint(raw, address string) (Endpoint, error) {
+func tcpEndpoint(address string) (endpoint, error) {
 	if _, _, err := net.SplitHostPort(address); err != nil {
-		return Endpoint{}, fmt.Errorf("tcp devlogbus endpoint must be host:port: %w", err)
+		return endpoint{}, fmt.Errorf("tcp devlogbus endpoint must be host:port: %w", err)
 	}
-	return Endpoint{
-		Raw:     raw,
-		Network: NetworkTCP,
+	return endpoint{
+		Network: networkTCP,
 		Address: address,
 	}, nil
 }
@@ -103,4 +98,21 @@ func looksLikeTCPAddress(raw string) bool {
 		return true
 	}
 	return false
+}
+
+func (e endpoint) String() string {
+	switch e.Network {
+	case networkUnix:
+		if e.Address == "" {
+			return ""
+		}
+		return "unix:" + e.Address
+	case networkTCP:
+		if e.Address == "" {
+			return ""
+		}
+		return "tcp://" + e.Address
+	default:
+		return e.Address
+	}
 }

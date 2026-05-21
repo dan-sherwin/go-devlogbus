@@ -8,22 +8,22 @@ import (
 	app_settings "github.com/dan-sherwin/go-app-settings"
 )
 
-type Settings struct {
+type settings struct {
 	mu         sync.RWMutex
 	Enabled    bool
 	Endpoint   string
-	handler    *Handler
+	handler    *handler
 	registered bool
 }
 
-func NewSettings() *Settings {
-	return &Settings{
-		Enabled:  DefaultEnabled(),
-		Endpoint: DefaultEndpoint(),
+func newSettings() *settings {
+	return &settings{
+		Enabled:  defaultEnabled(),
+		Endpoint: defaultEndpoint(),
 	}
 }
 
-func (s *Settings) Register() {
+func (s *settings) register() {
 	s.mu.Lock()
 	if s.registered {
 		s.mu.Unlock()
@@ -33,32 +33,32 @@ func (s *Settings) Register() {
 	s.mu.Unlock()
 
 	app_settings.RegisterSetting(&app_settings.Setting{
-		Name:        SettingEnabled,
+		Name:        settingEnabled,
 		Description: "Publish logs to DevLogBus",
 		GetFunc: func() string {
-			return strconv.FormatBool(s.Config().Enabled)
+			return strconv.FormatBool(s.config().Enabled)
 		},
 		SetFunc: func(value string) error {
 			enabled, err := strconv.ParseBool(value)
 			if err != nil {
 				return err
 			}
-			return s.SetEnabled(enabled)
+			return s.setEnabled(enabled)
 		},
 	})
 	app_settings.RegisterSetting(&app_settings.Setting{
-		Name:        SettingEndpoint,
+		Name:        settingEndpoint,
 		Description: "DevLogBus endpoint; accepts a Unix socket path, unix:/path.sock, tcp://host:port, or host:port",
 		GetFunc: func() string {
-			return s.Config().Endpoint
+			return s.config().Endpoint
 		},
 		SetFunc: func(value string) error {
-			return s.SetEndpoint(value)
+			return s.setEndpoint(value)
 		},
 	})
 }
 
-func (s *Settings) Bind(handler *Handler) error {
+func (s *settings) bind(handler *handler) error {
 	s.mu.Lock()
 	s.handler = handler
 	config := s.configLocked()
@@ -66,49 +66,48 @@ func (s *Settings) Bind(handler *Handler) error {
 	if handler == nil {
 		return nil
 	}
-	return handler.Configure(config)
+	return handler.configure(config)
 }
 
-func (s *Settings) NewHandler(options Options) *Handler {
-	config := s.Config()
+func (s *settings) newHandler(options handlerOptions) *handler {
+	config := s.config()
 	options.Enabled = config.Enabled
 	options.Endpoint = config.Endpoint
-	handler := New(options)
-	_ = s.Bind(handler)
+	handler := newHandler(options)
+	_ = s.bind(handler)
 	return handler
 }
 
-func (s *Settings) Config() Config {
+func (s *settings) config() config {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.configLocked()
 }
 
-func (s *Settings) Status() Status {
+func (s *settings) status() Status {
 	s.mu.RLock()
 	handler := s.handler
 	s.mu.RUnlock()
 	if handler != nil {
-		return handler.Status()
+		return handler.status()
 	}
-	config := s.Config()
-	endpoint, err := ParseEndpoint(config.Endpoint)
-	status := Status{Enabled: config.Enabled, Endpoint: config.Endpoint}
+	config := s.config()
+	endpoint, err := parseEndpoint(config.Endpoint)
+	status := Status{Enabled: config.Enabled}
 	if err != nil {
+		status.Endpoint = config.Endpoint
 		status.LastError = err.Error()
 		return status
 	}
-	status.Network = endpoint.Network
-	status.Address = endpoint.Address
-	status.SocketPath = endpoint.SocketPath
+	status.Endpoint = endpoint.String()
 	return status
 }
 
-func (s *Settings) Configure(config Config) error {
+func (s *settings) configure(config config) error {
 	if strings.TrimSpace(config.Endpoint) == "" {
-		config.Endpoint = DefaultEndpoint()
+		config.Endpoint = defaultEndpoint()
 	}
-	if _, err := ParseEndpoint(config.Endpoint); err != nil {
+	if _, err := parseEndpoint(config.Endpoint); err != nil {
 		return err
 	}
 
@@ -119,27 +118,27 @@ func (s *Settings) Configure(config Config) error {
 	s.mu.Unlock()
 
 	if handler != nil {
-		return handler.Configure(config)
+		return handler.configure(config)
 	}
 	return nil
 }
 
-func (s *Settings) SetEnabled(enabled bool) error {
-	config := s.Config()
+func (s *settings) setEnabled(enabled bool) error {
+	config := s.config()
 	config.Enabled = enabled
-	return s.Configure(config)
+	return s.configure(config)
 }
 
-func (s *Settings) SetEndpoint(endpoint string) error {
-	config := s.Config()
+func (s *settings) setEndpoint(endpoint string) error {
+	config := s.config()
 	config.Endpoint = endpoint
-	return s.Configure(config)
+	return s.configure(config)
 }
 
-func (s *Settings) configLocked() Config {
+func (s *settings) configLocked() config {
 	endpoint := strings.TrimSpace(s.Endpoint)
 	if endpoint == "" {
-		endpoint = DefaultEndpoint()
+		endpoint = defaultEndpoint()
 	}
-	return Config{Enabled: s.Enabled, Endpoint: endpoint}
+	return config{Enabled: s.Enabled, Endpoint: endpoint}
 }

@@ -14,7 +14,7 @@ Spacelink templated-service runtime behavior:
 - expose an RPC receiver that running services can register
 - persist RPC changes back through `app_settings` when desired
 
-## Settings
+## Usage
 
 Most templated services should call `Setup` once from the service `init()` path.
 The package owns a single process-wide runtime for settings, RPC, handler
@@ -34,36 +34,6 @@ The logger can attach the handler directly from the package:
 
 ```go
 handlers = godevlogbus.WithHandler(handlers, level)
-```
-
-That is the entire service-specific setup:
-
-```go
-func init() {
-	godevlogbus.Setup(godevlogbus.SetupOptions{
-		Source:      consts.APPNAME,
-		RegisterRPC: rpc.RegisterName,
-		CallRPC:     rpc.Call,
-	})
-}
-
-handlers = godevlogbus.WithHandler(handlers, level)
-```
-
-For services that still want a local helper while migrating:
-
-```go
-func init() {
-	godevlogbus.Setup(godevlogbus.SetupOptions{
-		Source:      consts.APPNAME,
-		RegisterRPC: rpc.RegisterName,
-		CallRPC:     rpc.Call,
-	})
-}
-
-func withDevLogBusHandler(handlers []slog.Handler, level slog.Level) []slog.Handler {
-	return godevlogbus.WithHandler(handlers, level)
-}
 ```
 
 The canonical settings are:
@@ -104,7 +74,6 @@ The receiver exposes:
 - `DevLogBus.Status`
 - `DevLogBus.Enable`
 - `DevLogBus.Disable`
-- `DevLogBus.SetEnabled`
 - `DevLogBus.SetEndpoint`
 - `DevLogBus.Configure`
 
@@ -114,6 +83,15 @@ The CLI command exposes:
 - `devlogbus enable`
 - `devlogbus disable`
 - `devlogbus setEndpoint`
+
+Status output is intentionally terse:
+
+```text
+Enabled:    true
+Endpoint:   tcp://127.0.0.1:7422
+Source:     event_management_svc
+Generation: 2
+```
 
 By default the receiver persists changes through `app_settings.SetSetting`, so a
 runtime troubleshooting change survives a service restart. Set

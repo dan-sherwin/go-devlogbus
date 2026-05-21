@@ -28,14 +28,12 @@ type runtimeState struct {
 	mu             sync.Mutex
 	source         string
 	rpcName        string
-	registerRPC    RegisterRPCFunc
 	callRPC        CallRPCFunc
-	settings       *Settings
-	handler        *Handler
+	settings       *settings
+	handler        *handler
 	output         io.Writer
 	queueSize      int
 	publishTimeout time.Duration
-	persistRPC     bool
 	setup          bool
 }
 
@@ -46,22 +44,10 @@ func Setup(options SetupOptions) {
 }
 
 func WithHandler(handlers []slog.Handler, level slog.Leveler) []slog.Handler {
-	return append(handlers, RuntimeHandler(level))
+	return append(handlers, defaultRuntime.handlerForLevel(level))
 }
 
-func RuntimeHandler(level slog.Leveler) *Handler {
-	return defaultRuntime.handlerForLevel(level)
-}
-
-func RuntimeSettings() *Settings {
-	return defaultRuntime.currentSettings()
-}
-
-func RPCName() string {
-	return defaultRuntime.currentRPCName()
-}
-
-func CurrentStatus() (Status, error) {
+func currentStatus() (Status, error) {
 	var status Status
 	if err := defaultRuntime.call("Status", EmptyArgs{}, &status); err != nil {
 		return Status{}, err
@@ -69,9 +55,9 @@ func CurrentStatus() (Status, error) {
 	return status, nil
 }
 
-func Enable(endpoint string) (Status, error) {
+func enable(endpoint string) (Status, error) {
 	if strings.TrimSpace(endpoint) != "" {
-		return Configure(Config{Enabled: true, Endpoint: endpoint})
+		return configure(config{Enabled: true, Endpoint: endpoint})
 	}
 	var status Status
 	if err := defaultRuntime.call("Enable", EmptyArgs{}, &status); err != nil {
@@ -80,7 +66,7 @@ func Enable(endpoint string) (Status, error) {
 	return status, nil
 }
 
-func Disable() (Status, error) {
+func disable() (Status, error) {
 	var status Status
 	if err := defaultRuntime.call("Disable", EmptyArgs{}, &status); err != nil {
 		return Status{}, err
@@ -88,7 +74,7 @@ func Disable() (Status, error) {
 	return status, nil
 }
 
-func SetEndpoint(endpoint string) (Status, error) {
+func setEndpoint(endpoint string) (Status, error) {
 	var status Status
 	if err := defaultRuntime.call("SetEndpoint", EndpointArgs{Endpoint: endpoint}, &status); err != nil {
 		return Status{}, err
@@ -96,7 +82,7 @@ func SetEndpoint(endpoint string) (Status, error) {
 	return status, nil
 }
 
-func Configure(config Config) (Status, error) {
+func configure(config config) (Status, error) {
 	var status Status
 	if err := defaultRuntime.call("Configure", ConfigureArgs{Enabled: config.Enabled, Endpoint: config.Endpoint}, &status); err != nil {
 		return Status{}, err
@@ -106,11 +92,10 @@ func Configure(config Config) (Status, error) {
 
 func newRuntimeState() *runtimeState {
 	return &runtimeState{
-		source:     "unknown",
-		rpcName:    DefaultRPCName,
-		settings:   NewSettings(),
-		output:     os.Stdout,
-		persistRPC: true,
+		source:   "unknown",
+		rpcName:  defaultRPCName,
+		settings: newSettings(),
+		output:   os.Stdout,
 	}
 }
 
@@ -121,7 +106,7 @@ func (s *runtimeState) setupRuntime(options SetupOptions) {
 	}
 	rpcName := strings.TrimSpace(options.RPCName)
 	if rpcName == "" {
-		rpcName = DefaultRPCName
+		rpcName = defaultRPCName
 	}
 	output := options.Output
 	if output == nil {
@@ -131,16 +116,12 @@ func (s *runtimeState) setupRuntime(options SetupOptions) {
 	s.mu.Lock()
 	s.source = source
 	s.rpcName = rpcName
-	s.registerRPC = options.RegisterRPC
 	s.callRPC = options.CallRPC
 	s.output = output
 	s.queueSize = options.QueueSize
 	s.publishTimeout = options.PublishTimeout
-	s.persistRPC = !options.DisableRPCPersistence
 	setup := s.setup
 	settings := s.settings
-	registerRPC := s.registerRPC
-	persistRPC := s.persistRPC
 	s.setup = true
 	s.mu.Unlock()
 
@@ -148,19 +129,17 @@ func (s *runtimeState) setupRuntime(options SetupOptions) {
 		return
 	}
 
-	settings.Register()
-	if registerRPC != nil {
-		receiver := NewRPCReceiver(settings, nil)
-		receiver.Persist = persistRPC
-		registerRPC(rpcName, receiver)
+	settings.register()
+	if options.RegisterRPC != nil {
+		options.RegisterRPC(rpcName, newRPCReceiver(settings, !options.DisableRPCPersistence))
 	}
 }
 
-func (s *runtimeState) handlerForLevel(level slog.Leveler) *Handler {
+func (s *runtimeState) handlerForLevel(level slog.Leveler) *handler {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.handler == nil {
-		s.handler = s.settings.NewHandler(Options{
+		s.handler = s.settings.newHandler(handlerOptions{
 			Source:         s.source,
 			Level:          level,
 			QueueSize:      s.queueSize,
@@ -168,24 +147,9 @@ func (s *runtimeState) handlerForLevel(level slog.Leveler) *Handler {
 		})
 		return s.handler
 	}
-	s.handler.SetLevel(level)
-	_ = s.settings.Bind(s.handler)
+	s.handler.setLevel(level)
+	_ = s.settings.bind(s.handler)
 	return s.handler
-}
-
-func (s *runtimeState) currentSettings() *Settings {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.settings
-}
-
-func (s *runtimeState) currentRPCName() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if strings.TrimSpace(s.rpcName) == "" {
-		return DefaultRPCName
-	}
-	return s.rpcName
 }
 
 func (s *runtimeState) call(method string, args any, reply any) error {
@@ -198,7 +162,7 @@ func (s *runtimeState) call(method string, args any, reply any) error {
 		return errors.New("devlogbus RPC caller is not configured")
 	}
 	if strings.TrimSpace(rpcName) == "" {
-		rpcName = DefaultRPCName
+		rpcName = defaultRPCName
 	}
 	return callRPC(rpcName+"."+method, args, reply)
 }

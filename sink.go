@@ -12,7 +12,7 @@ import (
 )
 
 type sink struct {
-	endpoint       Endpoint
+	endpoint       endpoint
 	queue          chan protocol.Record
 	publishTimeout time.Duration
 	onError        func(error)
@@ -22,7 +22,7 @@ type sink struct {
 	closeOnce      sync.Once
 }
 
-func newSink(endpoint Endpoint, queueSize int, publishTimeout time.Duration, onError func(error), onSuccess func()) *sink {
+func newSink(endpoint endpoint, queueSize int, publishTimeout time.Duration, onError func(error), onSuccess func()) *sink {
 	if queueSize <= 0 {
 		queueSize = 256
 	}
@@ -120,7 +120,7 @@ func (s *sink) markSuccess() {
 	}
 }
 
-func dialEndpoint(ctx context.Context, endpoint Endpoint) (net.Conn, error) {
+func dialEndpoint(ctx context.Context, endpoint endpoint) (net.Conn, error) {
 	var dialer net.Dialer
 	return dialer.DialContext(ctx, endpoint.Network, endpoint.Address)
 }

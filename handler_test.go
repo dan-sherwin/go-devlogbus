@@ -15,7 +15,7 @@ func TestHandlerDisabledDoesNotPublish(t *testing.T) {
 	listener, records := startTCPBroker(t)
 	defer listener.Close()
 
-	handler := New(Options{
+	handler := newHandler(handlerOptions{
 		Source:         "test-service",
 		Level:          slog.LevelDebug,
 		Enabled:        false,
@@ -40,7 +40,7 @@ func TestHandlerCanEnableAndSwitchEndpoint(t *testing.T) {
 	secondListener, secondRecords := startTCPBroker(t)
 	defer secondListener.Close()
 
-	handler := New(Options{
+	handler := newHandler(handlerOptions{
 		Source:         "test-service",
 		Level:          slog.LevelDebug,
 		Enabled:        false,
@@ -50,7 +50,7 @@ func TestHandlerCanEnableAndSwitchEndpoint(t *testing.T) {
 	defer handler.Close()
 
 	logger := slog.New(handler.WithAttrs([]slog.Attr{slog.String("app", "unit-test")}))
-	if err := handler.Configure(Config{Enabled: true, Endpoint: firstListener.Addr().String()}); err != nil {
+	if err := handler.configure(config{Enabled: true, Endpoint: firstListener.Addr().String()}); err != nil {
 		t.Fatalf("enable first endpoint: %v", err)
 	}
 	logger.Info("first message", slog.String("phase", "one"))
@@ -65,7 +65,7 @@ func TestHandlerCanEnableAndSwitchEndpoint(t *testing.T) {
 		t.Fatalf("expected record attr phase to be published, got %#v", firstRecord.Attrs)
 	}
 
-	if err := handler.Configure(Config{Enabled: true, Endpoint: secondListener.Addr().String()}); err != nil {
+	if err := handler.configure(config{Enabled: true, Endpoint: secondListener.Addr().String()}); err != nil {
 		t.Fatalf("switch endpoint: %v", err)
 	}
 	logger.Info("second message")
@@ -82,15 +82,15 @@ func TestHandlerCanEnableAndSwitchEndpoint(t *testing.T) {
 }
 
 func TestRPCReceiverConfiguresRuntimeWithoutPersistence(t *testing.T) {
-	settings := NewSettings()
-	handler := settings.NewHandler(Options{
+	settings := newSettings()
+	handler := settings.newHandler(handlerOptions{
 		Source:         "rpc-test",
 		Level:          slog.LevelDebug,
 		PublishTimeout: 25 * time.Millisecond,
 	})
 	defer handler.Close()
 
-	receiver := &RPCReceiver{Settings: settings, Handler: handler, Persist: false}
+	receiver := newRPCReceiver(settings, false)
 	var status Status
 	if err := receiver.Disable(EmptyArgs{}, &status); err != nil {
 		t.Fatalf("disable: %v", err)
@@ -105,8 +105,19 @@ func TestRPCReceiverConfiguresRuntimeWithoutPersistence(t *testing.T) {
 	if !status.Enabled {
 		t.Fatal("expected enabled status")
 	}
-	if status.Network != "tcp" || status.Address != "127.0.0.1:7422" {
+	if status.Endpoint != "tcp://127.0.0.1:7422" {
 		t.Fatalf("unexpected endpoint status: %#v", status)
+	}
+}
+
+func TestSettingsStatusUsesCanonicalEndpoint(t *testing.T) {
+	settings := newSettings()
+	if err := settings.configure(config{Enabled: true, Endpoint: "/tmp/devlogbus/devlogbus.sock"}); err != nil {
+		t.Fatalf("configure unix endpoint: %v", err)
+	}
+	status := settings.status()
+	if status.Endpoint != "unix:/tmp/devlogbus/devlogbus.sock" {
+		t.Fatalf("endpoint = %q, want canonical unix endpoint", status.Endpoint)
 	}
 }
 
