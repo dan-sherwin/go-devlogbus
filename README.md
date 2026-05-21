@@ -16,13 +16,22 @@ Spacelink templated-service runtime behavior:
 
 ## Settings
 
-Register these from the service `init()` path before `app_settings.Setup(...)`:
+Most templated services should use `Runtime`. It owns the settings, RPC
+receiver, handler lifecycle, and CLI command implementation:
 
 ```go
-var devLogBusSettings = godevlogbus.NewSettings()
+var devLogBus = godevlogbus.NewRuntime(godevlogbus.RuntimeOptions{
+	Source:      consts.APPNAME,
+	RegisterRPC: rpc.RegisterName,
+	CallRPC:     rpc.Call,
+})
 
 func init() {
-	devLogBusSettings.Register()
+	devLogBus.Register()
+}
+
+func withDevLogBusHandler(handlers []slog.Handler, level slog.Level) []slog.Handler {
+	return devLogBus.WithHandler(handlers, level)
 }
 ```
 
@@ -43,30 +52,23 @@ Endpoint examples:
 
 ## Handler
 
-Attach the handler regardless of the enabled setting:
+Attach the runtime handler regardless of the enabled setting:
 
 ```go
-handler := devLogBusSettings.NewHandler(godevlogbus.Options{
-	Source: consts.APPNAME,
-	Level:  level,
-})
-handlers = append(handlers, handler)
+handlers = devLogBus.WithHandler(handlers, level)
 ```
 
 The handler drops records when disabled, and it drops records instead of
 blocking when the broker cannot be reached or its internal queue is full.
 
-## RPC
+## CLI And RPC
 
-Register the receiver on the service's existing RPC server:
+Embed the package command definition in the service's Kong command tree:
 
 ```go
-handler := devLogBusSettings.NewHandler(godevlogbus.Options{
-	Source: consts.APPNAME,
-	Level:  level,
-})
-
-rpc.RegisterName(godevlogbus.DefaultRPCName, godevlogbus.NewRPCReceiver(devLogBusSettings, handler))
+type Commands struct {
+	godevlogbus.CommandDef
+}
 ```
 
 The receiver exposes:
@@ -78,6 +80,14 @@ The receiver exposes:
 - `DevLogBus.SetEndpoint`
 - `DevLogBus.Configure`
 
+The CLI command exposes:
+
+- `devlogbus status`
+- `devlogbus enable`
+- `devlogbus disable`
+- `devlogbus setEndpoint`
+
 By default the receiver persists changes through `app_settings.SetSetting`, so a
 runtime troubleshooting change survives a service restart. Set `Persist=false`
-on the receiver when a command should be process-local only.
+on `RPCReceiver`, or `DisableRPCPersistence=true` on `RuntimeOptions`, when a
+command should be process-local only.
