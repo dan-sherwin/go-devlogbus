@@ -8,8 +8,8 @@ github.com/alecthomas/repr v0.5.2 h1:SU73FTI9D1P5UNtvseffFSGmdNci/O6RsqzeXJtP0Qs
 github.com/alecthomas/repr v0.5.2/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
 github.com/clipperhouse/uax29/v2 v2.2.0 h1:ChwIKnQN3kcZteTXMgb1wztSgaU+ZemkgWdohwgs8tY=
 github.com/clipperhouse/uax29/v2 v2.2.0/go.mod h1:EFJ2TJMRUaplDxHKj1qAEhCtQPW2tJSwu5BF98AuoVM=
-github.com/dan-sherwin/devlogbus v0.1.4 h1:uS1PhdqzJLz3UU8wm5biNJw9DZKLkqi+9ZvKGj6r7gY=
-github.com/dan-sherwin/devlogbus v0.1.4/go.mod h1:RQEk0yoBgb82XAtAtFLhBepu6yikiSX3by8iIBAS6Rk=
+github.com/dan-sherwin/devlogbus v0.1.5 h1:AD5mQLDLo8wdW7FdFHceHiTFZGsC+AMKCHNihr1myaE=
+github.com/dan-sherwin/devlogbus v0.1.5/go.mod h1:RQEk0yoBgb82XAtAtFLhBepu6yikiSX3by8iIBAS6Rk=
 github.com/dan-sherwin/go-app-settings v0.4.0 h1:nuWDvUjhf579CQUz8ek3NkBX0z7XpXPE8hXkjcoGUnY=
 github.com/dan-sherwin/go-app-settings v0.4.0/go.mod h1:93k0Ufqby8TB79mktoVkj+Zic87+mhnDTs+1Z3LkQdY=
 github.com/dan-sherwin/go-utilities v1.2.1 h1:poHdYwqyx9wYkDXVQJghwttvv1Y6QqNBIGe3AknYbPA=

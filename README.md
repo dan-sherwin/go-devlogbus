@@ -41,6 +41,9 @@ The canonical settings are:
 - `devlogbus_enabled`
 - `devlogbus_endpoint`
 
+When `devlogbus_endpoint` is not saved, the default endpoint is the stable local
+socket `/tmp/devlogbus/devlogbus.sock`.
+
 Endpoint examples:
 
 - `/tmp/devlogbus/devlogbus.sock`

@@ -2,6 +2,25 @@ package godevlogbus
 
 import "testing"
 
+func TestDefaultEndpointUsesStableDevLogBusSocket(t *testing.T) {
+	if got := defaultEndpoint(); got != "/tmp/devlogbus/devlogbus.sock" {
+		t.Fatalf("defaultEndpoint = %q, want stable DevLogBus socket", got)
+	}
+}
+
+func TestParseEndpointDefaultsToStableSocket(t *testing.T) {
+	endpoint, err := parseEndpoint("")
+	if err != nil {
+		t.Fatalf("parseEndpoint returned error: %v", err)
+	}
+	if endpoint.Network != networkUnix {
+		t.Fatalf("network = %q, want %q", endpoint.Network, networkUnix)
+	}
+	if endpoint.Address != "/tmp/devlogbus/devlogbus.sock" {
+		t.Fatalf("address = %q, want stable DevLogBus socket", endpoint.Address)
+	}
+}
+
 func TestParseEndpoint(t *testing.T) {
 	tests := []struct {
 		name    string
