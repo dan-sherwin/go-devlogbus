@@ -1,9 +1,9 @@
 module github.com/dan-sherwin/go-devlogbus
 
-go 1.26.3
+go 1.26.2
 
 require (
-	github.com/dan-sherwin/devlogbus v0.1.1
+	github.com/dan-sherwin/devlogbus v0.1.4
 	github.com/dan-sherwin/go-app-settings v0.4.0
 )
 
