@@ -1,11 +1,11 @@
 # GoDevLogBus
 
-Spacelink-local runtime glue for wiring DevLogBus into the templated Go
-services that use `app_settings` and the built-in Unix RPC listener.
+Runtime glue for wiring DevLogBus into Go apps that use `app_settings` and a
+built-in RPC listener.
 
 This package intentionally lives outside `github.com/dan-sherwin/devlogbus`.
 DevLogBus stays a general transport/broker project; this package owns the
-Spacelink templated-service runtime behavior:
+application runtime behavior:
 
 - always attach a `slog.Handler`
 - keep the handler inert when `devlogbus_enabled=false`
